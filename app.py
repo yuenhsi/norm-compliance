@@ -167,9 +167,25 @@ def get_random_tree(db: Session = Depends(get_db)) -> NodeResponse:
 
     return NodeResponse.from_orm(root_node)
 
-@app.patch(
+@app.get(
     "/nodes/{node_id}",
     response_model=NodeResponse,
+    summary="Retrieve a specific node",
+    description="Get a node and its children.",
+)
+def get_node(node_id: int, db: Session = Depends(get_db)) -> NodeResponse:
+    node = db.query(Node).filter(Node.id == node_id).first()
+
+    if not node:
+        raise HTTPException(
+            status_code=404,
+            detail="No node with specified ID found.",
+        )
+    return NodeResponse.from_orm(node)
+
+@app.patch(
+    "/nodes/{node_id}",
+    response_model=list[NodeResponse],
     summary="Replace a node's status and optionally its reason",
     description="Update the node status (required) and reason (optional), then propagate status upwards.",
 )
@@ -178,6 +194,7 @@ def patch_node(
     payload: NodePatchRequest,
     db: Session = Depends(get_db),
 ) -> NodeResponse:
+    updated_nodes = []
     # STATUS should really be a enum of set [None, PASS, FAIL]. Enforce that here. 
     if payload.status not in ["PASS", "FAIL"]:
         raise HTTPException(status_code=404, detail=f"Payload status must be PASS | FAIL")
@@ -195,7 +212,7 @@ def patch_node(
     node.reason = payload.reason if payload.reason is not None else None
     db.add(node)
     db.flush()  # flush to make the new status visible in ORM relationships
-
+    updated_nodes.append(node)
     # 3. Upward propagation loop
     while status_changed:
         parent = node.parent
@@ -210,18 +227,20 @@ def patch_node(
             if parent.status != "PASS":
                 parent.status = "PASS"
                 db.add(parent)
+                updated_nodes.append(parent)
             else:
                 status_changed = False
         else:
             if parent.status == "PASS":
                 parent.status = "FAIL"
                 db.add(parent)
+                updated_nodes.append(parent)
             else:
                 status_changed = False
     db.commit()
     db.refresh(node)
 
-    return NodeResponse.from_orm(node)
+    return updated_nodes
 
 
 # The port number here is only used if running via `python app.py`; running via uvicorn

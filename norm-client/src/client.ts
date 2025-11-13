@@ -1,13 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
 // keep in sync with Pydantic class defined in app.py
-export interface NodeResponse {
+export interface Node {
     id: number;
     type: string;
     name: string;
     status?: string | null;
     reason?: string | null;
-    children: NodeResponse[];
+    children: Node[];
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -25,10 +25,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-    getTree: () => request<NodeResponse>("/"),
+    getTree: () => request<Node>("/"),
     patchNode: (id: number, status?: string, reason?: string) =>
-        request(`/nodes/${id}`, {
+        request<Node[]>(`/nodes/${id}`, {
             method: "PATCH",
             body: JSON.stringify({ status, reason }),
         }),
+    getNode: (id: number) => request<Node>(`/nodes/${id}`),
 };
